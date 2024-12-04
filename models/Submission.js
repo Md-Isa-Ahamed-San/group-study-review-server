@@ -7,11 +7,7 @@ const submissionSchema = new mongoose.Schema({
     ref: "Task",
     required: true,
   },
-  user_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-  },
+  email: { type: String },
   submitted_at: {
     type: Date,
     default: Date.now, // Automatically sets the submission time
@@ -21,15 +17,15 @@ const submissionSchema = new mongoose.Schema({
     required: true, // URL of the uploaded document
   },
   feedback: {
-    type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Feedback" }],
+    type: [{ type: String }],
     default: [], // Stores feedback IDs related to the submission
   },
   user_upvotes: {
-    type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    type: [{ type: String }],
     default: [], // List of user IDs who upvoted
   },
   expert_upvotes: {
-    type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    type: [{ type: String }],
     default: [], // List of expert IDs who upvoted
   },
 });

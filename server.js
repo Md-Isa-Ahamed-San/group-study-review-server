@@ -3,7 +3,7 @@ const connectDB = require("./db");
 const User = require("./models/User");
 const Class = require("./models/Class");
 const Task = require("./models/Task");
-const Submission = require('./models/Submission');
+const Submission = require("./models/Submission");
 const app = express();
 
 app.use(express.json());
@@ -70,6 +70,42 @@ const generateClassCode = () => {
   return code;
 };
 
+// getting class list where a user is in
+app.get("/api/classes/user/:userId", async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    // Query for classes where the user is in members or experts array
+    const userClasses = await Class.find({
+      $or: [
+        { members: userId }, // Check if user is in members
+        { experts: userId }, // Check if user is in experts
+      ],
+    });
+
+    // If no classes are found, return a message
+    if (userClasses.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No classes found for the given user ID.",
+      });
+    }
+
+    // Return the classes
+    res.status(200).json({
+      success: true,
+      message: "Classes fetched successfully.",
+      data: userClasses,
+    });
+  } catch (error) {
+    console.error("Error fetching user classes:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to fetch classes.",
+    });
+  }
+});
+
 // Route to insert a new class
 app.post("/api/classes", async (req, res) => {
   const {
@@ -112,6 +148,39 @@ app.post("/api/classes", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
+//getting a task details
+app.get("/api/task/:task_id", async (req, res) => {
+  const { task_id } = req.params; // Extract task_id from the URL path
+
+  try {
+    // Fetch the task by ID
+    const task = await Task.findById(task_id)
+      .populate("class_id", "name") // Populate class details (adjust as per Class schema)
+      .populate("submissions", "email submitted_at document") // Populate submission details
+      .populate("created_by", "name email"); // Populate creator details (if `created_by` references User model)
+
+    // Check if the task exists
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    // Respond with the task details
+    res.status(200).json({
+      success: true,
+      data: task,
+    });
+  } catch (error) {
+    console.error("Error fetching task by ID:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to fetch task details.",
+    });
+  }
+});
+
 
 //inserting task
 app.post("/api/task", async (req, res) => {
@@ -157,8 +226,9 @@ app.post("/api/task", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
+
 //getting all submissions under a task
-app.get('/api/submissions/:task_id', async (req, res) => {
+app.get("/api/submissions/:task_id", async (req, res) => {
   try {
     const { task_id } = req.params;
 
@@ -166,7 +236,7 @@ app.get('/api/submissions/:task_id', async (req, res) => {
     if (!task_id) {
       return res.status(400).json({
         success: false,
-        message: 'Task ID is required',
+        message: "Task ID is required",
       });
     }
 
@@ -177,7 +247,7 @@ app.get('/api/submissions/:task_id', async (req, res) => {
     if (!submissions || submissions.length === 0) {
       return res.status(200).json({
         success: true,
-        message: 'No submissions found for the provided task ID',
+        message: "No submissions found for the provided task ID",
         data: [],
       });
     }
@@ -185,35 +255,44 @@ app.get('/api/submissions/:task_id', async (req, res) => {
     // Return submissions if found
     res.status(200).json({
       success: true,
-      message: 'Submissions retrieved successfully',
+      message: "Submissions retrieved successfully",
       data: submissions,
     });
   } catch (error) {
-    console.error('Error fetching submissions:', error);
+    console.error("Error fetching submissions:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error. Unable to retrieve submissions.',
+      message: "Server error. Unable to retrieve submissions.",
     });
   }
 });
 
 //submitting a task
-app.post('/api/submissions', async (req, res) => {
+app.post("/api/submissions", async (req, res) => {
   try {
-    const { task_id, user_id, submitted_at, document, feedback, user_upvotes, expert_upvotes } = req.body;
+    const {
+      task_id,
+      email,
+      submitted_at,
+      document,
+      feedback,
+      user_upvotes,
+      expert_upvotes,
+    } = req.body;
 
     // Validate required fields
-    if (!task_id || !user_id || !submitted_at || !document) {
+    if (!task_id || !email || !submitted_at || !document) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: task_id, user_id, submitted_at, or document',
+        message:
+          "Missing required fields: task_id, email, submitted_at, or document",
       });
     }
 
     // Create a new submission object
     const newSubmission = new Submission({
       task_id,
-      user_id,
+      email,
       submitted_at: new Date(submitted_at), // Ensure the date is valid
       document,
       feedback: feedback || [], // Default to an empty array if not provided
@@ -224,16 +303,23 @@ app.post('/api/submissions', async (req, res) => {
     // Save the submission to the database
     const savedSubmission = await newSubmission.save();
 
+    // Update the Task document to include the submission ID
+    await Task.findByIdAndUpdate(
+      task_id,
+      { $push: { submissions: savedSubmission._id } }, // Add the submission ID to the submissions array
+      { new: true } // Return the updated document
+    );
+
     res.status(201).json({
       success: true,
-      message: 'Submission created successfully',
+      message: "Submission created successfully and linked to the task.",
       data: savedSubmission,
     });
   } catch (error) {
-    console.error('Error saving submission:', error);
+    console.error("Error saving submission:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error. Unable to create submission.',
+      message: "Server error. Unable to create submission.",
     });
   }
 });
