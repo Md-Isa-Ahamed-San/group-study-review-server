@@ -27,6 +27,8 @@ app.get("/api/users", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
+
+
 //Fetch classes associated with a user
 app.get("/api/classes/user/:userId", async (req, res) => {
   const { userId } = req.params;
@@ -64,6 +66,7 @@ app.get("/api/classes/user/:userId", async (req, res) => {
 });
 
 // user register for the website
+
 app.post("/api/users", async (req, res) => {
   const {
     username,
@@ -371,6 +374,95 @@ app.delete("/api/classes/:class_code", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error. Unable to delete class."
+    });
+  }
+});
+// Change user role in a class
+app.patch("/api/classes/:class_code/change-role", async (req, res) => {
+  const { class_code } = req.params; // Get class code from URL params
+  const { adminEmail, targetEmail, newRole } = req.body; // Get admin email, target email, and desired role
+
+  try {
+    // Find the class by class_code
+    const classDoc = await Class.findOne({ class_code });
+
+    // If the class does not exist
+    if (!classDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found with the provided class code.",
+      });
+    }
+
+    // Check if the requester is an admin of the class
+    if (!classDoc.admins.includes(adminEmail)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: Only class admins can change user roles.",
+      });
+    }
+
+    // Ensure the target user is part of the class
+    const isMember = classDoc.members.includes(targetEmail);
+    const isExpert = classDoc.experts.includes(targetEmail);
+
+    if (!isMember && !isExpert) {
+      return res.status(400).json({
+        success: false,
+        message: "Target user is not a part of this class.",
+      });
+    }
+
+    // Update roles based on the desired newRole
+    if (newRole === "expert") {
+      // Promote user to expert
+      if (!isMember) {
+        return res.status(400).json({
+          success: false,
+          message: "Target user is not a member of the class.",
+        });
+      }
+
+      // Remove user from members and add to experts
+      classDoc.members = classDoc.members.filter((email) => email !== targetEmail);
+      if (!classDoc.experts.includes(targetEmail)) {
+        classDoc.experts.push(targetEmail);
+      }
+    } else if (newRole === "member") {
+      // Demote user to member
+      if (!isExpert) {
+        return res.status(400).json({
+          success: false,
+          message: "Target user is not an expert in the class.",
+        });
+      }
+
+      // Remove user from experts and add to members
+      classDoc.experts = classDoc.experts.filter((email) => email !== targetEmail);
+      if (!classDoc.members.includes(targetEmail)) {
+        classDoc.members.push(targetEmail);
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role. Valid roles are 'member' and 'expert'.",
+      });
+    }
+
+    // Save the updated class document
+    await classDoc.save();
+
+    // Respond with success
+    res.status(200).json({
+      success: true,
+      message: `User role updated successfully to ${newRole}.`,
+      data: classDoc,
+    });
+  } catch (error) {
+    console.error("Error changing user role:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to change user role.",
     });
   }
 });
@@ -731,3 +823,4 @@ app.post("/api/submissions", async (req, res) => {
 // Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
