@@ -199,7 +199,7 @@ app.post("/api/classes/leave", async (req, res) => {
   }
 });
 
-// Route to create a new class
+// create a new class
 app.post("/api/classes", async (req, res) => {
   const { class_name, description, created_by } = req.body;
 
@@ -333,6 +333,7 @@ console.log(class_code,email,updates)
     });
   }
 });
+//delete a class
 app.delete("/api/classes/:class_code", async (req, res) => {
   const { class_code } = req.params;
   const { email } = req.body; // Need email to check admin status
@@ -409,6 +410,49 @@ app.get("/api/task/:task_id", async (req, res) => {
 });
 
 // Fetch all tasks in a class (active and completed)
+// Fetch all tasks in a class (active and completed)
+app.get("/api/classes/:classId/tasks", async (req, res) => {
+  const { classId } = req.params;
+
+  try {
+    // Find the class by its ID
+    const classData = await Class.findById(classId);
+
+    if (!classData) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    // Extract the task IDs from the class document
+    const taskIds = classData.tasks;
+
+    if (!taskIds || taskIds.length === 0) {
+      return res.status(404).json({ message: "No tasks found for this class" });
+    }
+
+    // Find all tasks whose IDs are in the taskIds array
+    const tasks = await Task.find({ _id: { $in: taskIds } });
+
+    // Separate tasks into ongoing and completed
+    const activeTasks = tasks.filter((task) => task.status === "ongoing");
+    const completedTasks = tasks.filter((task) => task.status === "completed");
+
+    // Respond with the task data
+    res.status(200).json({
+      success: true,
+      data: {
+        activeTasks,
+        completedTasks,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching tasks for class:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to fetch tasks.",
+    });
+  }
+});
+
 
 //Update task details after verifying the creator of the task
 app.patch("/api/task/:task_id", async (req, res) => {
@@ -491,15 +535,97 @@ app.post("/api/task", async (req, res) => {
       status,
       submissions,
       due_date,
-      document, // This will be the file URL from the client
+      document,
     });
 
     // Save the task to the database
     await newTask.save();
-    res.status(201).json(newTask); // Return the new task
+
+    // Find the class and update its tasks array
+    const updatedClass = await Class.findOneAndUpdate(
+      { _id: class_id }, // Assuming class_id is the class_code
+      { $push: { tasks: newTask._id } }, // Add the new task ID to the tasks array
+      { new: true } // Return the updated document
+    );
+
+    // Check if class was found and updated
+    if (!updatedClass) {
+      // If class wasn't found, delete the task we just created
+      await Task.findByIdAndDelete(newTask._id);
+      return res.status(404).json({
+        success: false,
+        message: "Class not found. Task creation cancelled."
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Task created successfully",
+      data: newTask
+    });
+
   } catch (error) {
     console.error("Error creating task:", error.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message
+    });
+  }
+});
+
+//Delete a new task
+app.delete("/api/task/:taskId", async (req, res) => {
+  const { taskId } = req.params;
+
+  // Log the incoming request for debugging
+  console.log("Attempting to delete task:", taskId);
+
+  try {
+    // First find the task to get its class_id before deletion
+    const task = await Task.findById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found"
+      });
+    }
+
+    // Remove the task from the Task collection
+    await Task.findByIdAndDelete(taskId);
+
+    // Remove the task reference from the corresponding class
+    const updatedClass = await Class.findByIdAndUpdate(
+      task.class_id,
+      { $pull: { tasks: taskId } }, // Remove the task ID from the tasks array
+      { new: true }
+    );
+
+    // Check if class was found and updated
+    if (!updatedClass) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found but task was deleted"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Task deleted successfully",
+      data: {
+        deletedTaskId: taskId,
+        updatedClass: updatedClass._id
+      }
+    });
+
+  } catch (error) {
+    console.error("Error deleting task:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message
+    });
   }
 });
 
