@@ -16,8 +16,7 @@ const taskSchema = new mongoose.Schema({
     required: true,
   }, // Description of the task
   created_by: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User", // Assuming there's a User model
+    type: String,
     required: true,
   }, // ID of the user who created the task
   created_at: {

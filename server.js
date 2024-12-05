@@ -15,7 +15,9 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-// Route to get all users
+//TODO - USER MANAGEMENT
+
+// fetching all users
 app.get("/api/users", async (req, res) => {
   try {
     const users = await User.find(); // Fetch all documents from the users collection
@@ -25,8 +27,43 @@ app.get("/api/users", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
+//Fetch classes associated with a user
+app.get("/api/classes/user/:userId", async (req, res) => {
+  const { userId } = req.params;
 
-// Route to insert a new user
+  try {
+    // Query for classes where the user is in members or experts array
+    const userClasses = await Class.find({
+      $or: [
+        { members: userId }, // Check if user is in members
+        { experts: userId }, // Check if user is in experts
+      ],
+    });
+
+    // If no classes are found, return a message
+    if (userClasses.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No classes found for the given user ID.",
+      });
+    }
+
+    // Return the classes
+    res.status(200).json({
+      success: true,
+      message: "Classes fetched successfully.",
+      data: userClasses,
+    });
+  } catch (error) {
+    console.error("Error fetching user classes:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to fetch classes.",
+    });
+  }
+});
+
+// user register for the website
 app.post("/api/users", async (req, res) => {
   const {
     username,
@@ -70,58 +107,112 @@ const generateClassCode = () => {
   return code;
 };
 
-// getting class list where a user is in
-app.get("/api/classes/user/:userId", async (req, res) => {
-  const { userId } = req.params;
+//TODO-CLASS MANAGEMENT
+
+// User joins a class
+app.post("/api/classes/join", async (req, res) => {
+  const { email, class_code } = req.body; // Expecting userId and classCode from the request body
 
   try {
-    // Query for classes where the user is in members or experts array
-    const userClasses = await Class.find({
-      $or: [
-        { members: userId }, // Check if user is in members
-        { experts: userId }, // Check if user is in experts
-      ],
-    });
+    // Find the class by classCode
+    const foundClass = await Class.findOne({ class_code: class_code });
 
-    // If no classes are found, return a message
-    if (userClasses.length === 0) {
+    // If the class does not exist
+    if (!foundClass) {
       return res.status(404).json({
         success: false,
-        message: "No classes found for the given user ID.",
+        message: "Class not found with the provided class code.",
       });
     }
 
-    // Return the classes
+    // Check if the user is already a member
+    if (foundClass.members.includes(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "User is already a member of this class.",
+      });
+    }
+
+    // Add the user to the members array
+    foundClass.members.push(email);
+
+    // Save the updated class
+    await foundClass.save();
+
+    // Respond with success message
     res.status(200).json({
       success: true,
-      message: "Classes fetched successfully.",
-      data: userClasses,
+      message: "User successfully joined the class.",
+      data: foundClass,
     });
   } catch (error) {
-    console.error("Error fetching user classes:", error.message);
+    console.error("Error joining class:", error.message);
     res.status(500).json({
       success: false,
-      message: "Server error. Unable to fetch classes.",
+      message: "Server error. Unable to join class.",
     });
   }
 });
 
-// Route to insert a new class
-app.post("/api/classes", async (req, res) => {
-  const {
-    class_name,
-    description,
-    created_by,
-    members,
-    experts,
-    admins,
-    tasks,
-    invites,
-  } = req.body;
+// User leaves a class
+app.post("/api/classes/leave", async (req, res) => {
+  const { email, classCode } = req.body; // Expecting userId and classCode from the request body
 
   try {
-    // Generate class_code and set creation date on the server
+    // Find the class by classCode
+    const foundClass = await Class.findOne({ class_code: classCode });
+
+    // If the class does not exist
+    if (!foundClass) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found with the provided class code.",
+      });
+    }
+
+    // Check if the user is not a member of the class
+    if (!foundClass.members.includes(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "User is not a member of this class.",
+      });
+    }
+
+    // Remove the user from the members array
+    foundClass.members = foundClass.members.filter((id) => id !== userId);
+
+    // Save the updated class
+    await foundClass.save();
+
+    // Respond with success message
+    res.status(200).json({
+      success: true,
+      message: "User successfully left the class.",
+      data: foundClass,
+    });
+  } catch (error) {
+    console.error("Error leaving class:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to leave class.",
+    });
+  }
+});
+
+// Route to create a new class
+app.post("/api/classes", async (req, res) => {
+  const { class_name, description, created_by } = req.body;
+
+  try {
+    // Generate class_code on the server
     const class_code = generateClassCode();
+
+    // Ensure the creator is in both admins and members arrays
+    const admins = [created_by]; // Creator is automatically an admin
+    const members = [created_by]; // Creator is automatically a member
+    const experts = []; // Optional: Initialize as empty
+    const tasks = []; // Default empty task list
+    const invites = []; // Default empty invites list
     const created_at = new Date();
 
     // Create a new class instance
@@ -148,7 +239,143 @@ app.post("/api/classes", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
-//getting a task details
+
+//get a class details
+app.get("/api/classes/:class_code", async (req, res) => {
+  const { class_code } = req.params;
+
+  try {
+    // Find the class by class_code
+    const classDetails = await Class.findOne({ class_code })
+      .populate('tasks'); // Populate tasks if needed
+
+    // If class not found
+    if (!classDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found with the provided class code."
+      });
+    }
+
+    // Return class details
+    res.status(200).json({
+      success: true,
+      message: "Class details retrieved successfully.",
+      data: classDetails
+    });
+
+  } catch (error) {
+    console.error("Error retrieving class details:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to retrieve class details."
+    });
+  }
+});
+
+// Update class details partially by class code
+app.patch("/api/classes/:class_code", async (req, res) => {
+  const { class_code } = req.params;
+  const { email, ...updates } = req.body; // Separate email from updates
+console.log(class_code,email,updates)
+  try {
+    // First find the class
+    const classDoc = await Class.findOne({ class_code });
+
+    // Check if class exists
+    if (!classDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found with the provided class code."
+      });
+    }
+
+    // Check if user is authorized (is an admin)
+    if (!classDoc.admins.includes(email)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: Only class admins can update class details."
+      });
+    }
+
+    // Apply updates manually
+    Object.keys(updates).forEach((key) => {
+      // Prevent updating certain fields like class_code or created_by
+      if (!['class_code', 'created_by', 'created_at'].includes(key)) {
+        classDoc[key] = updates[key];
+      }
+    });
+
+    // Save the updated class
+    const updatedClass = await classDoc.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Class updated successfully.",
+      data: updatedClass
+    });
+
+  } catch (error) {
+    console.error("Error updating class:", error.message);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid update data.",
+        errors: Object.values(error.errors).map(err => err.message)
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to update class."
+    });
+  }
+});
+app.delete("/api/classes/:class_code", async (req, res) => {
+  const { class_code } = req.params;
+  const { email } = req.body; // Need email to check admin status
+
+  try {
+    // First find the class
+    const classDoc = await Class.findOne({ class_code });
+
+    // Check if class exists
+    if (!classDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found with the provided class code."
+      });
+    }
+
+    // Check if user is authorized (is an admin)
+    if (!classDoc.admins.includes(email)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: Only class admins can delete this class."
+      });
+    }
+
+    // Delete the class
+    await Class.findOneAndDelete({ class_code });
+
+    res.status(200).json({
+      success: true,
+      message: "Class deleted successfully."
+    });
+
+  } catch (error) {
+    console.error("Error deleting class:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to delete class."
+    });
+  }
+});
+
+//TODO-TASK MANAGEMENT
+//Fetch details of a specific task.
 app.get("/api/task/:task_id", async (req, res) => {
   const { task_id } = req.params; // Extract task_id from the URL path
 
@@ -181,8 +408,57 @@ app.get("/api/task/:task_id", async (req, res) => {
   }
 });
 
+// Fetch all tasks in a class (active and completed)
 
-//inserting task
+//Update task details after verifying the creator of the task
+app.patch("/api/task/:task_id", async (req, res) => {
+  const { task_id } = req.params; // Extract task ID from the URL
+  const { email, ...updates } = req.body; // Extract user ID and updates from the request body
+
+  try {
+    // Find the task by ID
+    const task = await Task.findById(task_id);
+
+    // Check if the task exists
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    // Check if the user is the creator of the task
+    if (task.created_by !== email) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: Only the creator of the task can update it.",
+      });
+    }
+
+    // Update the task with the provided fields
+    Object.keys(updates).forEach((key) => {
+      task[key] = updates[key];
+    });
+
+    // Save the updated task
+    const updatedTask = await task.save();
+
+    // Respond with the updated task details
+    res.status(200).json({
+      success: true,
+      message: "Task updated successfully.",
+      data: updatedTask,
+    });
+  } catch (error) {
+    console.error("Error updating task:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to update task.",
+    });
+  }
+});
+
+//Create a new task in a class
 app.post("/api/task", async (req, res) => {
   // Parse the incoming JSON body
   const {
@@ -227,7 +503,9 @@ app.post("/api/task", async (req, res) => {
   }
 });
 
-//getting all submissions under a task
+//TODO-SUBMISSION MANAGEMENT
+
+//Fetch all submissions for a task.
 app.get("/api/submissions/:task_id", async (req, res) => {
   try {
     const { task_id } = req.params;
@@ -267,7 +545,7 @@ app.get("/api/submissions/:task_id", async (req, res) => {
   }
 });
 
-//submitting a task
+//Submit an assignment (PDF format).
 app.post("/api/submissions", async (req, res) => {
   try {
     const {
@@ -323,7 +601,6 @@ app.post("/api/submissions", async (req, res) => {
     });
   }
 });
-
 
 // Start the server
 const PORT = process.env.PORT || 5000;
