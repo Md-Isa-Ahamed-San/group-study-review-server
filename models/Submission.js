@@ -7,7 +7,11 @@ const submissionSchema = new mongoose.Schema({
     ref: "Task",
     required: true,
   },
-  email: { type: String },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
   submitted_at: {
     type: Date,
     default: Date.now, // Automatically sets the submission time

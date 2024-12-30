@@ -11,10 +11,7 @@ const MONGO_URI = `mongodb+srv://${process.env.VITE_DB_USERNAME}:${process.env.V
 // Connect to MongoDB
 const connectDB = async () => {
   try {
-    await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(MONGO_URI);
     console.log('MongoDB Connected...');
   } catch (err) {
     console.error('MongoDB connection error:', err.message);
