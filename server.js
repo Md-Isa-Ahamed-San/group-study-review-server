@@ -4,11 +4,30 @@ const User = require("./models/User");
 const Class = require("./models/Class");
 const Task = require("./models/Task");
 const Submission = require("./models/Submission");
+const cron = require("node-cron");
+
 const app = express();
-var cors = require('cors')
+var cors = require("cors");
 app.use(express.json());
 app.use(cors());
 connectDB();
+
+// Schedule a cron job to run every hour
+cron.schedule("* * * * *", async () => {
+  console.log("Running scheduled job to update task statuses...");
+
+  try {
+    // Find all tasks that are ongoing and whose dueDate has passed
+    const result = await Task.updateMany(
+      { status: "ongoing", dueDate: { $lt: new Date() } },
+      { $set: { status: "completed" } }
+    );
+
+    console.log(`${result.modifiedCount} tasks updated to 'completed' status.`);
+  } catch (error) {
+    console.error("Error updating task statuses:", error.message);
+  }
+});
 
 //TODO - USER MANAGEMENT
 
@@ -23,7 +42,23 @@ app.get("/api/users", async (req, res) => {
   }
 }); //!complete
 
+//fetching a user using email
+app.get("/api/user/:email", async (req, res) => {
+  const email = req.params.email; // Extract email from request parameters
+  try {
+    const user = await User.findOne({ email }); // Find user with the given email
+    if (!user) {
+      return res.status(404).json({ msg: "User not found" });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).send("Server Error");
+  }
+});
+
 //Fetch classes associated with a user
+
 // Fetch classes associated with a user's email
 app.get("/api/classes/user/:email", async (req, res) => {
   const { email } = req.params;
@@ -31,7 +66,7 @@ app.get("/api/classes/user/:email", async (req, res) => {
   try {
     // First, find the user by email to get their ObjectId
     const user = await User.findOne({ email });
-    console.log(user);
+    // console.log(user);
 
     if (!user) {
       return res.status(404).json({
@@ -71,7 +106,7 @@ app.get("/api/classes/user/:email", async (req, res) => {
 
 app.post("/api/users", async (req, res) => {
   const { username, email, profile_picture } = req.body;
-console.log(req.body)
+  // console.log(req.body)
   try {
     const newUser = new User({ username, email, profile_picture });
 
@@ -171,7 +206,7 @@ app.post("/api/classes/join", async (req, res) => {
 // User leaves a class
 app.post("/api/classes/leave", async (req, res) => {
   const { userId, classId } = req.body; // Expecting userId and classId from the request body
-  console.log("req.body:", req.body);
+  // console.log("req.body:", req.body);
 
   try {
     // Find the class by classId
@@ -232,8 +267,8 @@ app.post("/api/classes/leave", async (req, res) => {
 
 // create a new class
 app.post("/api/classes", async (req, res) => {
-  const { class_name, description, created_by } = req.body;
   // console.log(req.body);
+  const { class_name, description, created_by } = req.body;
   try {
     // Generate class_code on the server
     const class_code = generateClassCode();
@@ -274,14 +309,28 @@ app.post("/api/classes", async (req, res) => {
 //get a class details
 app.get("/api/classes/:id", async (req, res) => {
   const _id = req.params.id;
+  const userId = req.query.userId; // Pass userId as a query parameter
+
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: "User ID is required to check submission status.",
+    });
+  }
 
   try {
     // Fetch the class and populate related fields
     const classDetails = await Class.findOne({ _id })
-      .populate("tasks") // Populate tasks
-      .populate("members", "username email profile_picture") // Populate members
-      .populate("experts", "username email profile_picture") // Populate experts
-      .populate("admins", "username email profile_picture"); // Populate admins
+      .populate({
+        path: "tasks",
+        populate: {
+          path: "submissions", // Populate submissions for each task
+          select: "userId", // Only fetch userId from submissions
+        },
+      })
+      .populate("members", "username email profile_picture")
+      .populate("experts", "username email profile_picture")
+      .populate("admins", "username email profile_picture");
 
     // If class not found
     if (!classDetails) {
@@ -291,7 +340,14 @@ app.get("/api/classes/:id", async (req, res) => {
       });
     }
 
-    // Return class details with populated user data
+    // Add `isSubmitted` field to each task
+    classDetails.tasks.forEach((task) => {
+      task.isSubmitted = task.submissions.some(
+        (submission) => submission.userId.toString() === userId
+      );
+    });
+
+    // Return class details with populated user data and submission status
     res.status(200).json({
       success: true,
       message: "Class details retrieved successfully.",
@@ -304,7 +360,8 @@ app.get("/api/classes/:id", async (req, res) => {
       message: "Server error. Unable to retrieve class details.",
     });
   }
-}); //!complete
+});
+ //!complete
 
 // Update class details partially by class code
 app.patch("/api/classes/:id", async (req, res) => {
@@ -501,7 +558,6 @@ app.patch("/api/classes/:id/change-role", async (req, res) => {
   }
 }); //!complete
 
-
 //TODO-TASK MANAGEMENT
 
 //Fetch details of a specific task.
@@ -640,15 +696,8 @@ app.patch("/api/task/:task_id", async (req, res) => {
 
 //Create a new task in a class
 app.post("/api/task", async (req, res) => {
-  const {
-    class_id,
-    title,
-    description,
-    created_by,
-    due_date,
-    status,
-    document,
-  } = req.body;
+  const { class_id, title, description, created_by, dueDate, document } =
+    req.body;
 
   console.log("Request Body:", req.body);
 
@@ -688,9 +737,7 @@ app.post("/api/task", async (req, res) => {
       description,
       created_by,
       created_at: Date.now(),
-      status,
-
-      due_date,
+      dueDate,
       document,
     });
 
@@ -734,7 +781,7 @@ app.delete("/api/task/:taskId", async (req, res) => {
   const { taskId } = req.params;
 
   // Log the incoming request for debugging
-  console.log("Attempting to delete task:", taskId);
+  // console.log("Attempting to delete task:", taskId);
 
   try {
     // First find the task to get its class_id before deletion
@@ -784,6 +831,8 @@ app.delete("/api/task/:taskId", async (req, res) => {
 });
 
 //TODO-SUBMISSION MANAGEMENT
+//checking if a user is submitted a task or not
+
 
 //Fetch all submissions for a task.
 app.get("/api/submissions/:task_id", async (req, res) => {
@@ -886,9 +935,10 @@ app.patch("/api/submissions/:submission_id/upvote", async (req, res) => {
 
 //Submit an assignment (PDF format).
 app.post("/api/submissions", async (req, res) => {
+  console.log("req.body of api/submissions: ",req.body)
   try {
     const { task_id, userId, document } = req.body;
-    console.log(req.body);
+    // console.log(req.body);
     // Validate required fields
     if (!task_id || !userId || !document) {
       return res.status(400).json({

@@ -27,7 +27,7 @@ const taskSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     }, // Creation timestamp
-    due_date: {
+    dueDate: {
       type: Date,
       required: true,
       validate: {
