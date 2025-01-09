@@ -361,7 +361,7 @@ app.get("/api/classes/:id", async (req, res) => {
     });
   }
 });
- //!complete
+//!complete
 
 // Update class details partially by class code
 app.patch("/api/classes/:id", async (req, res) => {
@@ -833,7 +833,6 @@ app.delete("/api/task/:taskId", async (req, res) => {
 //TODO-SUBMISSION MANAGEMENT
 //checking if a user is submitted a task or not
 
-
 //Fetch all submissions for a task.
 app.get("/api/submissions/:task_id", async (req, res) => {
   try {
@@ -847,23 +846,41 @@ app.get("/api/submissions/:task_id", async (req, res) => {
       });
     }
 
-    // Find submissions by task_id
-    const submissions = await Submission.find({ task_id });
+    // Retrieve the task details
+    const task = await Task.findById(task_id).select("class_info title description").lean();
 
-    // Check if no submissions exist
-    if (!submissions || submissions.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "No submissions found for the provided task ID",
-        data: [],
+    // Check if the task exists
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
       });
     }
 
-    // Return submissions if found
+    // Find submissions related to the task_id and populate user details
+    const submissions = await Submission.find({ task_id })
+      .populate("userId", "username email profile_picture") // Populate user details
+      .lean(); // Convert Mongoose documents to plain JavaScript objects
+
+    // Transform submissions to include user details
+    const transformedSubmissions = submissions.map((submission) => {
+      const { userId, ...rest } = submission; // Destructure to separate userId
+      return {
+        ...rest,
+        user: userId, // Rename userId to user
+      };
+    });
+
+    // Return response with task info and submissions
     res.status(200).json({
       success: true,
       message: "Submissions retrieved successfully",
-      data: submissions,
+      classInfo: {
+        title: task.title,
+        description: task.description,
+        class_info: task.class_info,
+      },
+      submissions: transformedSubmissions,
     });
   } catch (error) {
     console.error("Error fetching submissions:", error);
@@ -872,7 +889,9 @@ app.get("/api/submissions/:task_id", async (req, res) => {
       message: "Server error. Unable to retrieve submissions.",
     });
   }
-}); //!complete
+});
+
+//!complete
 
 //toggling upvotes
 app.patch("/api/submissions/:submission_id/upvote", async (req, res) => {
@@ -935,7 +954,7 @@ app.patch("/api/submissions/:submission_id/upvote", async (req, res) => {
 
 //Submit an assignment (PDF format).
 app.post("/api/submissions", async (req, res) => {
-  console.log("req.body of api/submissions: ",req.body)
+  console.log("req.body of api/submissions: ", req.body);
   try {
     const { task_id, userId, document } = req.body;
     // console.log(req.body);
@@ -1013,6 +1032,55 @@ app.post("/api/submissions", async (req, res) => {
     });
   }
 }); //!complete
+
+//Update an assignment (PDF)
+app.patch("/api/submissions", async (req, res) => {
+  console.log("req body in side update an assignmet: ",req.body)
+  try {
+    const { document, submission_id, userId } = req.body; // Get the new values from the request body
+
+    // Find the submission by ID
+    const submission = await Submission.findById(submission_id);
+
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        message: "Submission not found.",
+      });
+    }
+
+    // Ensure that the user is the one who made the submission or an admin (optional check)
+    if (submission.userId.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to update this submission.",
+      });
+    }
+
+    // Update the submission with the new data (only the fields provided will be updated)
+    if (document) {
+      submission.document = document;
+    }
+
+    // Save the updated submission
+    const updatedSubmission = await submission.save();
+
+    // Return success response
+    res.status(200).json({
+      success: true,
+      message: "Submission updated successfully.",
+      data: updatedSubmission,
+    });
+  } catch (error) {
+    console.error("Error updating submission:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to update submission.",
+    });
+  }
+});
+
+
 
 // Start the server
 const PORT = process.env.PORT || 5000;
