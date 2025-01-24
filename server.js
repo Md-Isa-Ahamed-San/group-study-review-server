@@ -1086,31 +1086,79 @@ app.patch("/api/submissions", async (req, res) => {
 
 //DES: FEEDBACK
 app.get("/api/feedbacks", async (req, res) => {
-  const { submissionId:submission_id } = req.query;
+  const { submissionId: submission_id } = req.query;
   console.log("submission id inside api/feedbacks: ", req.query);
+
   // Check if submissionId is provided
   if (!submission_id) {
     return res.status(400).json({ message: "Submission ID is required" });
   }
 
   try {
-    // Query the database for feedbacks related to submissionId
-    const feedbacks = await Feedback.find({ submission_id });
+    // Query the database for feedbacks related to submissionId and populate all user details
+    const feedbacks = await Feedback.find({ submission_id })
+      .populate({
+        path: "user_id", // Populate user information
+        select: "-password", // Exclude sensitive fields like 'password'
+      })
+      .exec();
 
     // If no feedbacks found for the submissionId
     if (!feedbacks || feedbacks.length === 0) {
       return res
-        .status(404)
+        .status(200)
         .json({ message: "No feedbacks found for this submission" });
     }
 
-    // Return feedbacks if found
-    res.status(200).json(feedbacks);
+    // Map feedbacks to replace 'user_id' with 'userInfo' and include all fields
+    const formattedFeedbacks = feedbacks.map((feedback) => {
+      const feedbackObject = feedback.toObject(); // Convert Mongoose document to plain object
+      const userInfo = feedbackObject.user_id; // Extract user info
+      delete feedbackObject.user_id; // Remove the 'user_id' field
+
+      return {
+        ...feedbackObject, // Include all remaining feedback fields
+        userInfo, // Add 'userInfo' field with user details
+      };
+    });
+
+    // Return feedbacks with user information
+    res.status(200).json(formattedFeedbacks);
   } catch (error) {
     console.error("Error fetching feedbacks:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
+app.post("/api/feedbacks", async (req, res) => {
+  const { submission_id, content, user_id } = req.body;
+  // console.log("inside post method of feedback ", req.body);
+  // Validate input
+  if (!submission_id || !content || !user_id) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+    // Create a new feedback document
+    const newFeedback = new Feedback({
+      submission_id,
+      user_id,
+      content,
+    });
+
+    // Save the feedback to the database
+    const savedFeedback = await newFeedback.save();
+
+    res.status(201).json({
+      message: "Feedback submitted successfully",
+      feedback: savedFeedback,
+    });
+  } catch (error) {
+    console.error("Error submitting feedback:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
