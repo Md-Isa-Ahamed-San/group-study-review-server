@@ -1158,6 +1158,9 @@ app.post("/api/feedbacks", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+app.get("/", async (req, res) => {
+  res.send({ "message": "Server is running" });
+});
 
 // Start the server
 const PORT = process.env.PORT || 5000;
