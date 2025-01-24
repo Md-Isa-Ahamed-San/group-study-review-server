@@ -4,6 +4,7 @@ const User = require("./models/User");
 const Class = require("./models/Class");
 const Task = require("./models/Task");
 const Submission = require("./models/Submission");
+const Feedback = require("./models/Feedback");
 const cron = require("node-cron");
 
 const app = express();
@@ -847,7 +848,9 @@ app.get("/api/submissions/:task_id", async (req, res) => {
     }
 
     // Retrieve the task details
-    const task = await Task.findById(task_id).select("class_info title description").lean();
+    const task = await Task.findById(task_id)
+      .select("class_info title description")
+      .lean();
 
     // Check if the task exists
     if (!task) {
@@ -894,24 +897,25 @@ app.get("/api/submissions/:task_id", async (req, res) => {
 //!complete
 
 //toggling upvotes
-app.patch("/api/submissions/:submission_id/upvote", async (req, res) => {
+app.patch("/api/submissions/upvote", async (req, res) => {
   try {
-    const { submission_id } = req.params;
-    const { user_id, role } = req.body;
+    const { userId, userType, submissionId } = req.body;
+    console.log("🚀 ~ app.patch /api/submissions/upvote:", req.body);
 
     // Validate inputs
-    if (!submission_id || !user_id || !role) {
+    if (!submissionId || !userId || !userType) {
       return res.status(400).json({
         success: false,
-        message: "Submission ID, user ID, and role are required",
+        message: "Submission ID, user ID, and user type are required",
       });
     }
 
-    // Define the upvote field based on role
-    const upvoteField = role === "expert" ? "expert_upvotes" : "user_upvotes";
+    // Define the upvote field based on userType
+    const upvoteField =
+      userType === "experts" ? "expert_upvotes" : "user_upvotes";
 
     // Find the submission by ID
-    const submission = await Submission.findById(submission_id);
+    const submission = await Submission.findById(submissionId);
 
     if (!submission) {
       return res.status(404).json({
@@ -922,11 +926,11 @@ app.patch("/api/submissions/:submission_id/upvote", async (req, res) => {
 
     // Toggle upvote
     const fieldArray = submission[upvoteField];
-    const index = fieldArray.indexOf(user_id);
+    const index = fieldArray.indexOf(userId);
 
     if (index === -1) {
       // User hasn't upvoted yet; add the user ID
-      fieldArray.push(user_id);
+      fieldArray.push(userId);
     } else {
       // User already upvoted; remove the user ID
       fieldArray.splice(index, 1);
@@ -937,9 +941,9 @@ app.patch("/api/submissions/:submission_id/upvote", async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Upvote toggled successfully for ${role}`,
+      message: `Upvote toggled successfully for ${userType}`,
       data: {
-        submission_id: submission._id,
+        submissionId: submission._id,
         [upvoteField]: submission[upvoteField],
       },
     });
@@ -1035,7 +1039,7 @@ app.post("/api/submissions", async (req, res) => {
 
 //Update an assignment (PDF)
 app.patch("/api/submissions", async (req, res) => {
-  console.log("req body in side update an assignmet: ",req.body)
+  console.log("req body in side update an assignmet: ", req.body);
   try {
     const { document, submission_id, userId } = req.body; // Get the new values from the request body
 
@@ -1080,8 +1084,33 @@ app.patch("/api/submissions", async (req, res) => {
   }
 });
 
+//DES: FEEDBACK
+app.get("/api/feedbacks", async (req, res) => {
+  const { submissionId:submission_id } = req.query;
+  console.log("submission id inside api/feedbacks: ", req.query);
+  // Check if submissionId is provided
+  if (!submission_id) {
+    return res.status(400).json({ message: "Submission ID is required" });
+  }
 
+  try {
+    // Query the database for feedbacks related to submissionId
+    const feedbacks = await Feedback.find({ submission_id });
 
+    // If no feedbacks found for the submissionId
+    if (!feedbacks || feedbacks.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No feedbacks found for this submission" });
+    }
+
+    // Return feedbacks if found
+    res.status(200).json(feedbacks);
+  } catch (error) {
+    console.error("Error fetching feedbacks:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 // Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
