@@ -6,6 +6,11 @@ const Task = require("./models/Task");
 const Submission = require("./models/Submission");
 const Feedback = require("./models/Feedback");
 const cron = require("node-cron");
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyAccessToken,
+} = require("./auth");
 
 const app = express();
 var cors = require("cors");
@@ -45,13 +50,25 @@ app.get("/api/users", async (req, res) => {
 
 //fetching a user using email
 app.get("/api/user/:email", async (req, res) => {
-  const email = req.params.email; // Extract email from request parameters
+  const email = req.params.email;
+
   try {
-    const user = await User.findOne({ email }); // Find user with the given email
+    const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
     }
-    res.json(user);
+
+    // Generate tokens
+    const authToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    res.json({
+      user,
+      token: {
+        authToken,
+        refreshToken,
+      },
+    });
   } catch (error) {
     console.error(error.message);
     res.status(500).send("Server Error");
@@ -61,45 +78,50 @@ app.get("/api/user/:email", async (req, res) => {
 //Fetch classes associated with a user
 
 // Fetch classes associated with a user's email
-app.get("/api/classes/user/:email", async (req, res) => {
-  const { email } = req.params;
+app.get(
+  "/api/classes/user/:email",
+  verifyAccessToken,
+  async (req, res) => {
+    const { email } = req.params;
+    // console.log("Authorization header:", req.headers.authorization);
 
-  try {
-    // First, find the user by email to get their ObjectId
-    const user = await User.findOne({ email });
-    // console.log(user);
+    try {
+      // First, find the user by email to get their ObjectId
+      const user = await User.findOne({ email });
+      // console.log(user);
 
-    if (!user) {
-      return res.status(404).json({
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "No user found with the given email.",
+        });
+      }
+
+      // Use the user's ObjectId to find classes where they are a member or expert
+      const userClasses = await Class.find({
+        $or: [
+          { members: user._id }, // Check if the user is in members
+          { experts: user._id }, // Check if the user is in experts
+        ],
+      });
+
+      // Return classes or an empty array if none found
+      return res.status(200).json({
+        success: true,
+        message: userClasses.length
+          ? "Classes fetched successfully."
+          : "User exists but has no associated classes.",
+        data: userClasses,
+      });
+    } catch (error) {
+      console.error("Error fetching user classes by email:", error.message);
+      res.status(500).json({
         success: false,
-        message: "No user found with the given email.",
+        message: "Server error. Unable to fetch classes.",
       });
     }
-
-    // Use the user's ObjectId to find classes where they are a member or expert
-    const userClasses = await Class.find({
-      $or: [
-        { members: user._id }, // Check if the user is in members
-        { experts: user._id }, // Check if the user is in experts
-      ],
-    });
-
-    // Return classes or an empty array if none found
-    return res.status(200).json({
-      success: true,
-      message: userClasses.length
-        ? "Classes fetched successfully."
-        : "User exists but has no associated classes.",
-      data: userClasses,
-    });
-  } catch (error) {
-    console.error("Error fetching user classes by email:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Server error. Unable to fetch classes.",
-    });
   }
-});
+);
 
 //!complete
 
@@ -267,9 +289,14 @@ app.post("/api/classes/leave", async (req, res) => {
 }); //!complete
 
 // create a new class
-app.post("/api/classes", async (req, res) => {
+app.post("/api/classes", verifyAccessToken, async (req, res) => {
   // console.log(req.body);
   const { class_name, description, created_by } = req.body;
+  // console.log(
+  //   "Authorization header inside create a new class:",
+  //   req.headers.authorization
+  // );
+  console.log("req.body create a new class: ", req.body);
   try {
     // Generate class_code on the server
     const class_code = generateClassCode();
@@ -1159,7 +1186,7 @@ app.post("/api/feedbacks", async (req, res) => {
   }
 });
 app.get("/", async (req, res) => {
-  res.send({ "message": "Server is running" });
+  res.send({ message: "Server is running" });
 });
 
 // Start the server
