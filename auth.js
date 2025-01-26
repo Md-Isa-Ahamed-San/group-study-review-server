@@ -32,7 +32,7 @@ function verifyAccessToken(req, res, next) {
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     req.user = verified; // Attach user details to the request
-    // console.log("Valid Token Verified:", verified); // Log for valid token
+    console.log("Valid Token Verified:", verified); // Log for valid token
     next();
   } catch (error) {
     console.log("Invalid or Expired Token:", error.message); // Log for invalid token
