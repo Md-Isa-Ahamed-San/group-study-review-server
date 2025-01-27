@@ -454,7 +454,7 @@ app.patch("/api/classes/:id",verifyAccessToken, async (req, res) => {
 //delete a class
 app.delete("/api/classes/:id",verifyAccessToken, async (req, res) => {
   const _id = req.params.id;
-  const { email } = req.body; // Need email to check admin status
+  // const { email } = req.body;
 
   try {
     // First find the class
@@ -465,14 +465,6 @@ app.delete("/api/classes/:id",verifyAccessToken, async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Class not found with the provided class code.",
-      });
-    }
-
-    // Check if user is authorized (is an admin)
-    if (!classDoc.admins.includes(email)) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized: Only class admins can delete this class.",
       });
     }
 
