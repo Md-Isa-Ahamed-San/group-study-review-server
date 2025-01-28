@@ -29,7 +29,7 @@ cron.schedule("* * * * *", async () => {
       { $set: { status: "completed" } }
     );
 
-    console.log(`${result.modifiedCount} tasks updated to 'completed' status.`);
+    // console.log(`${result.modifiedCount} tasks updated to 'completed' status.`);
   } catch (error) {
     console.error("Error updating task statuses:", error.message);
   }
@@ -78,50 +78,46 @@ app.get("/api/user/:email", async (req, res) => {
 //Fetch classes associated with a user
 
 // Fetch classes associated with a user's email
-app.get(
-  "/api/classes/user/:email",
-  verifyAccessToken,
-  async (req, res) => {
-    const { email } = req.params;
-    // console.log("Authorization header:", req.headers.authorization);
+app.get("/api/classes/user/:email", verifyAccessToken, async (req, res) => {
+  const { email } = req.params;
+  // console.log("Authorization header:", req.headers.authorization);
 
-    try {
-      // First, find the user by email to get their ObjectId
-      const user = await User.findOne({ email });
-      // console.log(user);
+  try {
+    // First, find the user by email to get their ObjectId
+    const user = await User.findOne({ email });
+    // console.log(user);
 
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "No user found with the given email.",
-        });
-      }
-
-      // Use the user's ObjectId to find classes where they are a member or expert
-      const userClasses = await Class.find({
-        $or: [
-          { members: user._id }, // Check if the user is in members
-          { experts: user._id }, // Check if the user is in experts
-        ],
-      });
-
-      // Return classes or an empty array if none found
-      return res.status(200).json({
-        success: true,
-        message: userClasses.length
-          ? "Classes fetched successfully."
-          : "User exists but has no associated classes.",
-        data: userClasses,
-      });
-    } catch (error) {
-      console.error("Error fetching user classes by email:", error.message);
-      res.status(500).json({
+    if (!user) {
+      return res.status(404).json({
         success: false,
-        message: "Server error. Unable to fetch classes.",
+        message: "No user found with the given email.",
       });
     }
+
+    // Use the user's ObjectId to find classes where they are a member or expert
+    const userClasses = await Class.find({
+      $or: [
+        { members: user._id }, // Check if the user is in members
+        { experts: user._id }, // Check if the user is in experts
+      ],
+    });
+
+    // Return classes or an empty array if none found
+    return res.status(200).json({
+      success: true,
+      message: userClasses.length
+        ? "Classes fetched successfully."
+        : "User exists but has no associated classes.",
+      data: userClasses,
+    });
+  } catch (error) {
+    console.error("Error fetching user classes by email:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to fetch classes.",
+    });
   }
-);
+});
 
 //!complete
 
@@ -182,7 +178,7 @@ app.get("/api/classes", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // User joins a class
-app.post("/api/classes/join",verifyAccessToken, async (req, res) => {
+app.post("/api/classes/join", verifyAccessToken, async (req, res) => {
   const { id, class_code } = req.body; // Expecting userId and classCode from the request body
 
   try {
@@ -227,7 +223,7 @@ app.post("/api/classes/join",verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // User leaves a class
-app.post("/api/classes/leave",verifyAccessToken, async (req, res) => {
+app.post("/api/classes/leave", verifyAccessToken, async (req, res) => {
   const { userId, classId } = req.body; // Expecting userId and classId from the request body
   // console.log("req.body:", req.body);
 
@@ -335,7 +331,7 @@ app.post("/api/classes", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //get a class details
-app.get("/api/classes/:id",verifyAccessToken, async (req, res) => {
+app.get("/api/classes/:id", verifyAccessToken, async (req, res) => {
   const _id = req.params.id;
   const userId = req.query.userId; // Pass userId as a query parameter
 
@@ -392,7 +388,7 @@ app.get("/api/classes/:id",verifyAccessToken, async (req, res) => {
 //!complete
 
 // Update class details partially by class code
-app.patch("/api/classes/:id",verifyAccessToken, async (req, res) => {
+app.patch("/api/classes/:id", verifyAccessToken, async (req, res) => {
   const _id = req.params.id;
   const { email, ...updates } = req.body;
   // console.log(_id, email, updates);
@@ -452,7 +448,7 @@ app.patch("/api/classes/:id",verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //delete a class
-app.delete("/api/classes/:id",verifyAccessToken, async (req, res) => {
+app.delete("/api/classes/:id", verifyAccessToken, async (req, res) => {
   const _id = req.params.id;
   // const { email } = req.body;
 
@@ -485,103 +481,96 @@ app.delete("/api/classes/:id",verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // Change user role in a class
-app.patch("/api/classes/:id/change-role",verifyAccessToken, async (req, res) => {
-  const _id = req.params.id; // Get class code from URL params
-  const { adminId, userId, newRole } = req.body; // Get admin email, target email, and desired role
 
-  try {
-    // Find the class by class_code
-    const classDoc = await Class.findOne({ _id });
+app.patch(
+  "/api/classes/:classCode/change-role",
+  verifyAccessToken,
+  async (req, res) => {
+    // console.log(req.body);
+    const class_code = req.params.classCode;
+    const { userId, creator } = req.body;
 
-    // If the class does not exist
-    if (!classDoc) {
-      return res.status(404).json({
-        success: false,
-        message: "Class not found with the provided class code.",
-      });
-    }
-
-    // Check if the requester is an admin of the class
-    if (!classDoc.admins.includes(adminId)) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized: Only class admins can change user roles.",
-      });
-    }
-
-    // Ensure the target user is part of the class
-    const isMember = classDoc.members.includes(userId);
-    const isExpert = classDoc.experts.includes(userId);
-
-    if (!isMember && !isExpert) {
-      return res.status(400).json({
-        success: false,
-        message: "Target user is not a part of this class.",
-      });
-    }
-
-    // Update roles based on the desired newRole
-    if (newRole === "expert") {
-      // Promote user to expert
-      if (!isMember) {
-        return res.status(400).json({
+    try {
+      // Find the class document based on the class code
+      const classDoc = await Class.findOne({ class_code: class_code });
+      if (!classDoc) {
+        return res.status(404).json({
           success: false,
-          message: "Target user is not a member of the class.",
+          message: "Class not found",
         });
       }
 
-      // Remove user from members and add to experts
-      classDoc.members = classDoc.members.filter(
-        (id) => id.toString() !== userId
-      );
-      if (!classDoc.experts.includes(userId)) {
-        classDoc.experts.push(userId);
-      }
-    } else if (newRole === "member") {
-      // Demote user to member
-      if (!isExpert) {
-        return res.status(400).json({
+      // console.log("creator: ", classDoc.created_by.toString(), creator);
+
+      // Ensure the requester is the class creator
+      if (classDoc.created_by.toString() !== creator) {
+        return res.status(403).json({
           success: false,
-          message: "Target user is not an expert in the class.",
+          message: "Unauthorized: Only the class creator can change roles",
         });
       }
 
-      // Remove user from experts and add to members
-      classDoc.experts = classDoc.experts.filter(
-        (id) => id.toString() !== userId
-      );
-      if (!classDoc.members.includes(userId)) {
-        classDoc.members.push(userId);
+      // Check if the user is a member or an expert in the class
+      const isMember = classDoc.members.includes(userId);
+      const isExpert = classDoc.experts.includes(userId);
+
+      if (!isMember && !isExpert) {
+        return res.status(400).json({
+          success: false,
+          message: "User not found in the class",
+        });
       }
-    } else {
-      return res.status(400).json({
+
+      let newRole, currentRole;
+
+      if (isExpert) {
+        // Demote from expert to member
+        classDoc.experts = classDoc.experts.filter((id) => id.toString() !== userId); // Remove from experts
+        if (!classDoc.members.includes(userId)) {
+          classDoc.members.push(userId); // Add to members
+        }
+        currentRole = "expert";
+        newRole = "member";
+      } else if (isMember) {
+        // Promote from member to expert
+        classDoc.members = classDoc.members.filter((id) => id.toString() !== userId); // Remove from members
+        // console.log("classDoc.members: ",classDoc.members)
+        if (!classDoc.experts.includes(userId)) {
+          classDoc.experts.push(userId); // Add to experts
+        }
+        currentRole = "member";
+        newRole = "expert";
+      }
+      // console.log("classDoc: ",classDoc)
+      // Save the updated class document
+      await classDoc.save();
+
+      return res.status(200).json({
+        success: true,
+        message: `User role successfully changed from ${currentRole} to ${newRole}`,
+        data: {
+          updatedUser: { id: userId, previousRole: currentRole, newRole },
+        },
+      });
+    } catch (error) {
+      console.error("Role change error:", error);
+      return res.status(500).json({
         success: false,
-        message: "Invalid role. Valid roles are 'member' and 'expert'.",
+        message: "Server error during role change",
+        error: error.message,
       });
     }
-
-    // Save the updated class document
-    await classDoc.save();
-
-    // Respond with success
-    res.status(200).json({
-      success: true,
-      message: `User role updated successfully to ${newRole}.`,
-      data: classDoc,
-    });
-  } catch (error) {
-    console.error("Error changing user role:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Server error. Unable to change user role.",
-    });
   }
-}); //!complete
+);
+
+
+
+//!complete
 
 //TODO-TASK MANAGEMENT
 
 //Fetch details of a specific task.
-app.get("/api/task/:task_id",verifyAccessToken, async (req, res) => {
+app.get("/api/task/:task_id", verifyAccessToken, async (req, res) => {
   const { task_id } = req.params; // Extract task_id from the URL path
 
   try {
@@ -614,7 +603,7 @@ app.get("/api/task/:task_id",verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // Fetch all tasks in a class (active and completed)
-app.get("/api/classes/:classId/tasks",verifyAccessToken, async (req, res) => {
+app.get("/api/classes/:classId/tasks", verifyAccessToken, async (req, res) => {
   const { classId } = req.params;
 
   try {
@@ -667,7 +656,7 @@ app.get("/api/classes/:classId/tasks",verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //Update task details after verifying the creator of the task
-app.patch("/api/task/:task_id",verifyAccessToken, async (req, res) => {
+app.patch("/api/task/:task_id", verifyAccessToken, async (req, res) => {
   const { task_id } = req.params; // Extract task ID from the URL
   const { email, ...updates } = req.body; // Extract user ID and updates from the request body
 
@@ -715,11 +704,11 @@ app.patch("/api/task/:task_id",verifyAccessToken, async (req, res) => {
 });
 
 //Create a new task in a class
-app.post("/api/task",verifyAccessToken, async (req, res) => {
+app.post("/api/task", verifyAccessToken, async (req, res) => {
   const { class_id, title, description, created_by, dueDate, document } =
     req.body;
 
-  console.log("Request Body:", req.body);
+  // console.log("Request Body:", req.body);
 
   // Check for required fields
   if (!class_id || !title || !created_by || !document) {
@@ -797,7 +786,7 @@ app.post("/api/task",verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //Delete a new task
-app.delete("/api/task/:taskId",verifyAccessToken, async (req, res) => {
+app.delete("/api/task/:taskId", verifyAccessToken, async (req, res) => {
   const { taskId } = req.params;
 
   // Log the incoming request for debugging
@@ -854,7 +843,7 @@ app.delete("/api/task/:taskId",verifyAccessToken, async (req, res) => {
 //checking if a user is submitted a task or not
 
 //Fetch all submissions for a task.
-app.get("/api/submissions/:task_id",verifyAccessToken, async (req, res) => {
+app.get("/api/submissions/:task_id", verifyAccessToken, async (req, res) => {
   try {
     const { task_id } = req.params;
 
@@ -916,10 +905,10 @@ app.get("/api/submissions/:task_id",verifyAccessToken, async (req, res) => {
 //!complete
 
 //toggling upvotes
-app.patch("/api/submissions/upvote",verifyAccessToken, async (req, res) => {
+app.patch("/api/submissions/upvote", verifyAccessToken, async (req, res) => {
   try {
     const { userId, userType, submissionId } = req.body;
-    console.log("🚀 ~ app.patch /api/submissions/upvote:", req.body);
+    // console.log("🚀 ~ app.patch /api/submissions/upvote:", req.body);
 
     // Validate inputs
     if (!submissionId || !userId || !userType) {
@@ -976,8 +965,8 @@ app.patch("/api/submissions/upvote",verifyAccessToken, async (req, res) => {
 });
 
 //Submit an assignment (PDF format).
-app.post("/api/submissions",verifyAccessToken, async (req, res) => {
-  console.log("req.body of api/submissions: ", req.body);
+app.post("/api/submissions", verifyAccessToken, async (req, res) => {
+  // console.log("req.body of api/submissions: ", req.body);
   try {
     const { task_id, userId, document } = req.body;
     // console.log(req.body);
@@ -1057,8 +1046,8 @@ app.post("/api/submissions",verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //Update an assignment (PDF)
-app.patch("/api/submissions",verifyAccessToken, async (req, res) => {
-  console.log("req body in side update an assignmet: ", req.body);
+app.patch("/api/submissions", verifyAccessToken, async (req, res) => {
+  // console.log("req body in side update an assignmet: ", req.body);
   try {
     const { document, submission_id, userId } = req.body; // Get the new values from the request body
 
@@ -1104,9 +1093,9 @@ app.patch("/api/submissions",verifyAccessToken, async (req, res) => {
 });
 
 //DES: FEEDBACK
-app.get("/api/feedbacks",verifyAccessToken, async (req, res) => {
+app.get("/api/feedbacks", verifyAccessToken, async (req, res) => {
   const { submissionId: submission_id } = req.query;
-  console.log("submission id inside api/feedbacks: ", req.query);
+  // console.log("submission id inside api/feedbacks: ", req.query);
 
   // Check if submissionId is provided
   if (!submission_id) {
@@ -1149,7 +1138,7 @@ app.get("/api/feedbacks",verifyAccessToken, async (req, res) => {
   }
 });
 
-app.post("/api/feedbacks",verifyAccessToken, async (req, res) => {
+app.post("/api/feedbacks", verifyAccessToken, async (req, res) => {
   const { submission_id, content, user_id } = req.body;
   // console.log("inside post method of feedback ", req.body);
   // Validate input
