@@ -74,50 +74,88 @@ app.get("/api/user/:email", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
+app.post("/api/auth/refresh-token", async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({ msg: "Refresh token is required" });
+  }
+
+  try {
+    // Verify the refresh token (e.g., using jwt.verify)
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+
+    // Fetch user based on the decoded data (usually userId or email)
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(404).json({ msg: "User not found" });
+    }
+
+    // Generate new access token
+    const newAuthToken = generateAccessToken(user);
+
+    // Optionally, if needed, regenerate the refresh token (refresh tokens are typically long-lived)
+    const newRefreshToken = generateRefreshToken(user);
+
+    res.json({
+      token: {
+        authToken: newAuthToken,
+        refreshToken: newRefreshToken, // Optionally send a new refresh token
+      },
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(401).json({ msg: "Invalid or expired refresh token" });
+  }
+});
 
 //Fetch classes associated with a user
 
 // Fetch classes associated with a user's email
-app.get("/api/classes/user/:email", verifyAccessToken, async (req, res) => {
-  const { email } = req.params;
-  // console.log("Authorization header:", req.headers.authorization);
+app.get(
+  "/api/classes/user/:email",
+  // verifyAccessToken,
+  async (req, res) => {
+    const { email } = req.params;
+    // console.log("Authorization header:", req.headers.authorization);
 
-  try {
-    // First, find the user by email to get their ObjectId
-    const user = await User.findOne({ email });
-    // console.log(user);
+    try {
+      // First, find the user by email to get their ObjectId
+      const user = await User.findOne({ email });
+      // console.log(user);
 
-    if (!user) {
-      return res.status(404).json({
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "No user found with the given email.",
+        });
+      }
+
+      // Use the user's ObjectId to find classes where they are a member or expert
+      const userClasses = await Class.find({
+        $or: [
+          { members: user._id }, // Check if the user is in members
+          { experts: user._id }, // Check if the user is in experts
+        ],
+      });
+
+      // Return classes or an empty array if none found
+      return res.status(200).json({
+        success: true,
+        message: userClasses.length
+          ? "Classes fetched successfully."
+          : "User exists but has no associated classes.",
+        data: userClasses,
+      });
+    } catch (error) {
+      console.error("Error fetching user classes by email:", error.message);
+      res.status(500).json({
         success: false,
-        message: "No user found with the given email.",
+        message: "Server error. Unable to fetch classes.",
       });
     }
-
-    // Use the user's ObjectId to find classes where they are a member or expert
-    const userClasses = await Class.find({
-      $or: [
-        { members: user._id }, // Check if the user is in members
-        { experts: user._id }, // Check if the user is in experts
-      ],
-    });
-
-    // Return classes or an empty array if none found
-    return res.status(200).json({
-      success: true,
-      message: userClasses.length
-        ? "Classes fetched successfully."
-        : "User exists but has no associated classes.",
-      data: userClasses,
-    });
-  } catch (error) {
-    console.error("Error fetching user classes by email:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Server error. Unable to fetch classes.",
-    });
   }
-});
+);
 
 //!complete
 
@@ -331,60 +369,64 @@ app.post("/api/classes", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //get a class details
-app.get("/api/classes/:id", verifyAccessToken, async (req, res) => {
-  const _id = req.params.id;
-  const userId = req.query.userId; // Pass userId as a query parameter
+app.get(
+  "/api/classes/:id",
+  // verifyAccessToken,
+  async (req, res) => {
+    const _id = req.params.id;
+    const userId = req.query.userId; // Pass userId as a query parameter
 
-  if (!userId) {
-    return res.status(400).json({
-      success: false,
-      message: "User ID is required to check submission status.",
-    });
-  }
-
-  try {
-    // Fetch the class and populate related fields
-    const classDetails = await Class.findOne({ _id })
-      .populate({
-        path: "tasks",
-        populate: {
-          path: "submissions", // Populate submissions for each task
-          select: "userId", // Only fetch userId from submissions
-        },
-      })
-      .populate("members", "username email profile_picture")
-      .populate("experts", "username email profile_picture")
-      .populate("admins", "username email profile_picture");
-
-    // If class not found
-    if (!classDetails) {
-      return res.status(404).json({
+    if (!userId) {
+      return res.status(400).json({
         success: false,
-        message: "Class not found with the provided class code.",
+        message: "User ID is required to check submission status.",
       });
     }
 
-    // Add `isSubmitted` field to each task
-    classDetails.tasks.forEach((task) => {
-      task.isSubmitted = task.submissions.some(
-        (submission) => submission.userId.toString() === userId
-      );
-    });
+    try {
+      // Fetch the class and populate related fields
+      const classDetails = await Class.findOne({ _id })
+        .populate({
+          path: "tasks",
+          populate: {
+            path: "submissions", // Populate submissions for each task
+            select: "userId", // Only fetch userId from submissions
+          },
+        })
+        .populate("members", "username email profile_picture")
+        .populate("experts", "username email profile_picture")
+        .populate("admins", "username email profile_picture");
 
-    // Return class details with populated user data and submission status
-    res.status(200).json({
-      success: true,
-      message: "Class details retrieved successfully.",
-      data: classDetails,
-    });
-  } catch (error) {
-    console.error("Error retrieving class details:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Server error. Unable to retrieve class details.",
-    });
+      // If class not found
+      if (!classDetails) {
+        return res.status(404).json({
+          success: false,
+          message: "Class not found with the provided class code.",
+        });
+      }
+
+      // Add `isSubmitted` field to each task
+      classDetails.tasks.forEach((task) => {
+        task.isSubmitted = task.submissions.some(
+          (submission) => submission.userId.toString() === userId
+        );
+      });
+
+      // Return class details with populated user data and submission status
+      res.status(200).json({
+        success: true,
+        message: "Class details retrieved successfully.",
+        data: classDetails,
+      });
+    } catch (error) {
+      console.error("Error retrieving class details:", error.message);
+      res.status(500).json({
+        success: false,
+        message: "Server error. Unable to retrieve class details.",
+      });
+    }
   }
-});
+);
 //!complete
 
 // Update class details partially by class code
@@ -525,7 +567,9 @@ app.patch(
 
       if (isExpert) {
         // Demote from expert to member
-        classDoc.experts = classDoc.experts.filter((id) => id.toString() !== userId); // Remove from experts
+        classDoc.experts = classDoc.experts.filter(
+          (id) => id.toString() !== userId
+        ); // Remove from experts
         if (!classDoc.members.includes(userId)) {
           classDoc.members.push(userId); // Add to members
         }
@@ -533,7 +577,9 @@ app.patch(
         newRole = "member";
       } else if (isMember) {
         // Promote from member to expert
-        classDoc.members = classDoc.members.filter((id) => id.toString() !== userId); // Remove from members
+        classDoc.members = classDoc.members.filter(
+          (id) => id.toString() !== userId
+        ); // Remove from members
         // console.log("classDoc.members: ",classDoc.members)
         if (!classDoc.experts.includes(userId)) {
           classDoc.experts.push(userId); // Add to experts
@@ -562,8 +608,6 @@ app.patch(
     }
   }
 );
-
-
 
 //!complete
 

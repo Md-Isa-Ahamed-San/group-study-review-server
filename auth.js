@@ -22,7 +22,7 @@ function generateRefreshToken(user) {
 function verifyAccessToken(req, res, next) {
   // console.log("req: ", req.header);
   const token = req.header("Authorization")?.replace("Bearer ", "");
-
+console.log("token: ",token)
   if (!token) {
     return res
       .status(401)
@@ -31,6 +31,7 @@ function verifyAccessToken(req, res, next) {
 
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("verified: ",verified)
     req.user = verified; // Attach user details to the request
     console.log("Valid Token Verified:", verified); // Log for valid token
     next();
