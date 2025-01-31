@@ -6,6 +6,8 @@ const Task = require("./models/Task");
 const Submission = require("./models/Submission");
 const Feedback = require("./models/Feedback");
 const cron = require("node-cron");
+const jwt = require("jsonwebtoken");
+
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -82,11 +84,10 @@ app.post("/api/auth/refresh-token", async (req, res) => {
   }
 
   try {
-    // Verify the refresh token (e.g., using jwt.verify)
-    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
 
     // Fetch user based on the decoded data (usually userId or email)
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.id);
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
     }
@@ -195,7 +196,9 @@ const generateClassCode = () => {
 //TODO-CLASS MANAGEMENT
 
 // Get all classes
-app.get("/api/classes", verifyAccessToken, async (req, res) => {
+app.get("/api/classes",
+  // verifyAccessToken , 
+  async (req, res) => {
   try {
     // Retrieve all classes from the database
     const classes = await Class.find();
@@ -216,7 +219,9 @@ app.get("/api/classes", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // User joins a class
-app.post("/api/classes/join", verifyAccessToken, async (req, res) => {
+app.post("/api/classes/join",
+  //  verifyAccessToken,
+    async (req, res) => {
   const { id, class_code } = req.body; // Expecting userId and classCode from the request body
 
   try {
@@ -261,7 +266,9 @@ app.post("/api/classes/join", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // User leaves a class
-app.post("/api/classes/leave", verifyAccessToken, async (req, res) => {
+app.post("/api/classes/leave",
+  //  verifyAccessToken, 
+   async (req, res) => {
   const { userId, classId } = req.body; // Expecting userId and classId from the request body
   // console.log("req.body:", req.body);
 
@@ -323,7 +330,9 @@ app.post("/api/classes/leave", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // create a new class
-app.post("/api/classes", verifyAccessToken, async (req, res) => {
+app.post("/api/classes",
+  //  verifyAccessToken, 
+   async (req, res) => {
   // console.log(req.body);
   const { class_name, description, created_by } = req.body;
   // console.log(
@@ -369,68 +378,68 @@ app.post("/api/classes", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //get a class details
-app.get(
-  "/api/classes/:id",
-  // verifyAccessToken,
-  async (req, res) => {
-    const _id = req.params.id;
-    const userId = req.query.userId; // Pass userId as a query parameter
+app.get("/api/classes/:id",
+  //  verifyAccessToken, 
+   async (req, res) => {
+  const _id = req.params.id;
+  const userId = req.query.userId; // Pass userId as a query parameter
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID is required to check submission status.",
-      });
-    }
-
-    try {
-      // Fetch the class and populate related fields
-      const classDetails = await Class.findOne({ _id })
-        .populate({
-          path: "tasks",
-          populate: {
-            path: "submissions", // Populate submissions for each task
-            select: "userId", // Only fetch userId from submissions
-          },
-        })
-        .populate("members", "username email profile_picture")
-        .populate("experts", "username email profile_picture")
-        .populate("admins", "username email profile_picture");
-
-      // If class not found
-      if (!classDetails) {
-        return res.status(404).json({
-          success: false,
-          message: "Class not found with the provided class code.",
-        });
-      }
-
-      // Add `isSubmitted` field to each task
-      classDetails.tasks.forEach((task) => {
-        task.isSubmitted = task.submissions.some(
-          (submission) => submission.userId.toString() === userId
-        );
-      });
-
-      // Return class details with populated user data and submission status
-      res.status(200).json({
-        success: true,
-        message: "Class details retrieved successfully.",
-        data: classDetails,
-      });
-    } catch (error) {
-      console.error("Error retrieving class details:", error.message);
-      res.status(500).json({
-        success: false,
-        message: "Server error. Unable to retrieve class details.",
-      });
-    }
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: "User ID is required to check submission status.",
+    });
   }
-);
+
+  try {
+    // Fetch the class and populate related fields
+    const classDetails = await Class.findOne({ _id })
+      .populate({
+        path: "tasks",
+        populate: {
+          path: "submissions", // Populate submissions for each task
+          select: "userId", // Only fetch userId from submissions
+        },
+      })
+      .populate("members", "username email profile_picture")
+      .populate("experts", "username email profile_picture")
+      .populate("admins", "username email profile_picture");
+
+    // If class not found
+    if (!classDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found with the provided class code.",
+      });
+    }
+
+    // Add `isSubmitted` field to each task
+    classDetails.tasks.forEach((task) => {
+      task.isSubmitted = task.submissions.some(
+        (submission) => submission.userId.toString() === userId
+      );
+    });
+
+    // Return class details with populated user data and submission status
+    res.status(200).json({
+      success: true,
+      message: "Class details retrieved successfully.",
+      data: classDetails,
+    });
+  } catch (error) {
+    console.error("Error retrieving class details:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Unable to retrieve class details.",
+    });
+  }
+});
 //!complete
 
 // Update class details partially by class code
-app.patch("/api/classes/:id", verifyAccessToken, async (req, res) => {
+app.patch("/api/classes/:id", 
+  // verifyAccessToken,
+   async (req, res) => {
   const _id = req.params.id;
   const { email, ...updates } = req.body;
   // console.log(_id, email, updates);
@@ -490,7 +499,9 @@ app.patch("/api/classes/:id", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //delete a class
-app.delete("/api/classes/:id", verifyAccessToken, async (req, res) => {
+app.delete("/api/classes/:id",
+  //  verifyAccessToken,
+    async (req, res) => {
   const _id = req.params.id;
   // const { email } = req.body;
 
@@ -526,7 +537,7 @@ app.delete("/api/classes/:id", verifyAccessToken, async (req, res) => {
 
 app.patch(
   "/api/classes/:classCode/change-role",
-  verifyAccessToken,
+  // verifyAccessToken,
   async (req, res) => {
     // console.log(req.body);
     const class_code = req.params.classCode;
@@ -614,7 +625,9 @@ app.patch(
 //TODO-TASK MANAGEMENT
 
 //Fetch details of a specific task.
-app.get("/api/task/:task_id", verifyAccessToken, async (req, res) => {
+app.get("/api/task/:task_id", 
+  // verifyAccessToken,
+   async (req, res) => {
   const { task_id } = req.params; // Extract task_id from the URL path
 
   try {
@@ -647,7 +660,9 @@ app.get("/api/task/:task_id", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 // Fetch all tasks in a class (active and completed)
-app.get("/api/classes/:classId/tasks", verifyAccessToken, async (req, res) => {
+app.get("/api/classes/:classId/tasks", 
+  // verifyAccessToken, 
+  async (req, res) => {
   const { classId } = req.params;
 
   try {
@@ -700,7 +715,9 @@ app.get("/api/classes/:classId/tasks", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //Update task details after verifying the creator of the task
-app.patch("/api/task/:task_id", verifyAccessToken, async (req, res) => {
+app.patch("/api/task/:task_id", 
+  // verifyAccessToken,
+   async (req, res) => {
   const { task_id } = req.params; // Extract task ID from the URL
   const { email, ...updates } = req.body; // Extract user ID and updates from the request body
 
@@ -748,7 +765,9 @@ app.patch("/api/task/:task_id", verifyAccessToken, async (req, res) => {
 });
 
 //Create a new task in a class
-app.post("/api/task", verifyAccessToken, async (req, res) => {
+app.post("/api/task", 
+  // verifyAccessToken,
+   async (req, res) => {
   const { class_id, title, description, created_by, dueDate, document } =
     req.body;
 
@@ -830,7 +849,9 @@ app.post("/api/task", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //Delete a new task
-app.delete("/api/task/:taskId", verifyAccessToken, async (req, res) => {
+app.delete("/api/task/:taskId",
+  //  verifyAccessToken,
+    async (req, res) => {
   const { taskId } = req.params;
 
   // Log the incoming request for debugging
@@ -887,7 +908,9 @@ app.delete("/api/task/:taskId", verifyAccessToken, async (req, res) => {
 //checking if a user is submitted a task or not
 
 //Fetch all submissions for a task.
-app.get("/api/submissions/:task_id", verifyAccessToken, async (req, res) => {
+app.get("/api/submissions/:task_id", 
+  // verifyAccessToken, 
+  async (req, res) => {
   try {
     const { task_id } = req.params;
 
@@ -949,7 +972,9 @@ app.get("/api/submissions/:task_id", verifyAccessToken, async (req, res) => {
 //!complete
 
 //toggling upvotes
-app.patch("/api/submissions/upvote", verifyAccessToken, async (req, res) => {
+app.patch("/api/submissions/upvote", 
+  // verifyAccessToken,
+   async (req, res) => {
   try {
     const { userId, userType, submissionId } = req.body;
     // console.log("🚀 ~ app.patch /api/submissions/upvote:", req.body);
@@ -1009,7 +1034,9 @@ app.patch("/api/submissions/upvote", verifyAccessToken, async (req, res) => {
 });
 
 //Submit an assignment (PDF format).
-app.post("/api/submissions", verifyAccessToken, async (req, res) => {
+app.post("/api/submissions", 
+  // verifyAccessToken,
+   async (req, res) => {
   // console.log("req.body of api/submissions: ", req.body);
   try {
     const { task_id, userId, document } = req.body;
@@ -1090,7 +1117,9 @@ app.post("/api/submissions", verifyAccessToken, async (req, res) => {
 }); //!complete
 
 //Update an assignment (PDF)
-app.patch("/api/submissions", verifyAccessToken, async (req, res) => {
+app.patch("/api/submissions", 
+  // verifyAccessToken, 
+  async (req, res) => {
   // console.log("req body in side update an assignmet: ", req.body);
   try {
     const { document, submission_id, userId } = req.body; // Get the new values from the request body
@@ -1137,7 +1166,9 @@ app.patch("/api/submissions", verifyAccessToken, async (req, res) => {
 });
 
 //DES: FEEDBACK
-app.get("/api/feedbacks", verifyAccessToken, async (req, res) => {
+app.get("/api/feedbacks",
+  //  verifyAccessToken, 
+   async (req, res) => {
   const { submissionId: submission_id } = req.query;
   // console.log("submission id inside api/feedbacks: ", req.query);
 
@@ -1182,7 +1213,9 @@ app.get("/api/feedbacks", verifyAccessToken, async (req, res) => {
   }
 });
 
-app.post("/api/feedbacks", verifyAccessToken, async (req, res) => {
+app.post("/api/feedbacks",
+  //  verifyAccessToken, 
+   async (req, res) => {
   const { submission_id, content, user_id } = req.body;
   // console.log("inside post method of feedback ", req.body);
   // Validate input

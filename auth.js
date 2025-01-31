@@ -30,6 +30,7 @@ console.log("token: ",token)
   }
 
   try {
+    console.log(process.env.JWT_SECRET)
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     console.log("verified: ",verified)
     req.user = verified; // Attach user details to the request
