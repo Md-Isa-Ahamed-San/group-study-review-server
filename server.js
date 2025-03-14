@@ -542,7 +542,7 @@ app.patch(
     // console.log(req.body);
     const class_code = req.params.classCode;
     const { userId, creator } = req.body;
-
+console.log("hitting")
     try {
       // Find the class document based on the class code
       const classDoc = await Class.findOne({ class_code: class_code });
@@ -552,6 +552,8 @@ app.patch(
           message: "Class not found",
         });
       }
+      // console.log("class doc: ",classDoc)
+      // console.log("creator: ",userId,creator)
 
       // console.log("creator: ", classDoc.created_by.toString(), creator);
 
