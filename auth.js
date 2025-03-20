@@ -19,29 +19,30 @@ function generateRefreshToken(user) {
 }
 
 // Verify Access Token Middleware
-function verifyAccessToken(req, res, next) {
-  // console.log("req: ", req.header);
+function verifyAccessToken (req, res, next) {
+  // console.log("req: ", req.header?.Authorization);
   const token = req.header("Authorization")?.replace("Bearer ", "");
-console.log("token: ",token)
+  // console.log("token: ", token);
   if (!token) {
+    
     return res
       .status(401)
       .json({ message: "Access Denied. No Token Provided." });
   }
 
   try {
-    console.log(process.env.JWT_SECRET)
+    // console.log(process.env.JWT_SECRET);
     const verified = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("verified: ",verified)
+    // console.log("verified: ", verified);
     req.user = verified; // Attach user details to the request
-    console.log("Valid Token Verified:", verified); // Log for valid token
+    console.log("Valid Token Verified:", req.user); // Log for valid token
+
     next();
   } catch (error) {
-    console.log("Invalid or Expired Token:", error.message); // Log for invalid token
+    // console.log("Invalid or Expired Token:", error.message);
     res.status(403).json({ message: "Invalid or Expired Token." });
   }
 }
-
 
 module.exports = {
   generateAccessToken,
