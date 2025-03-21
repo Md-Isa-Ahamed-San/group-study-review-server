@@ -76,6 +76,76 @@ app.get("/api/user/:email", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
+//fetching data for user profile
+app.get("/api/user/profile/:email", verifyAccessToken, async (req, res) => {
+  const { email } = req.params;
+  console.log("Fetching profile data for:", email);
+
+  try {
+    // 1️⃣ Fetch User Details
+    const user = await User.findOne({ email }).select(
+      "username email profile_picture created_at"
+    );
+    console.log(" app.get ~ user:", user)
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    // 2️⃣ Fetch User's Classes (where they are a member, expert, or creator)
+    const userClasses = await Class.find({
+      $or: [
+        { members: user._id },
+        { experts: user._id },
+        { created_by: user._id },
+      ],
+    }).select("class_name class_code description created_by");
+
+    // 3️⃣ Fetch User's Task Submissions
+    const submissions = await Submission.find({ userId: user._id })
+      .populate({
+        path: "task_id", // Join with Task model
+        select: "title description", // Only include task title & description
+      })
+      .select("document submitted_at user_upvotes expert_upvotes feedback");
+
+    // 4️⃣ Aggregate Engagement Metrics
+    const totalUpvotes = submissions.reduce(
+      (sum, sub) => sum + sub.user_upvotes.length + sub.expert_upvotes.length,
+      0
+    );
+    const totalFeedbacks = submissions.reduce(
+      (sum, sub) => sum + sub.feedback.length,
+      0
+    );
+
+    // ✅ Return Final User Profile Data
+    return res.status(200).json({
+      success: true,
+      message: "User profile fetched successfully.",
+      data: {
+        user,
+        classes: userClasses,
+        submissions,
+        engagement: {
+          totalUpvotes,
+          totalFeedbacks,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error. Unable to fetch user profile.",
+      error: error.message,
+    });
+  }
+});
+
 app.post("/api/auth/refresh-token", async (req, res) => {
   const { refreshToken } = req.body;
 
