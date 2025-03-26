@@ -9,6 +9,4 @@ const userSchema = new mongoose.Schema({
   submissions: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Submission' }], default: [] },
 });
 
-const User = mongoose.model('User', userSchema);
-
-module.exports = User;
+module.exports = mongoose.models.User || mongoose.model("User", userSchema);

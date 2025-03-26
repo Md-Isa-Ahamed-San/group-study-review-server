@@ -42,6 +42,4 @@ const invitationSchema = new mongoose.Schema({
 });
 
 // Compile the model
-const Invitation = mongoose.model("Invitation", invitationSchema);
-
-module.exports = Invitation;
+module.exports = mongoose.models.Invitation || mongoose.model("Invitation", invitationSchema);
